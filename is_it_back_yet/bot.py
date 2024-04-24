@@ -106,10 +106,7 @@ class IsItBackYet:
             
                 await self._message_users(self.tasks[url], f'{url} is back up!')
             
-            for url in list(self.tasks.keys()):
-                if self.tasks[url].is_back:
-                    self.tasks.pop(url)
-            self.tasks = {url: value for url, value in self.tasks if not value.is_back}
+            self.tasks = {url: value for url, value in self.tasks.items() if not value.is_back}
             
             print(self.tasks)
             
