@@ -10,7 +10,8 @@ from discord.ext.commands import Bot, Context
 from dotenv import load_dotenv
 import requests
 
-from is_it_back_yet import Task
+from .task import Task
+from .utils import validate_url
 
 
 class IsItBackYet:
@@ -26,7 +27,7 @@ class IsItBackYet:
         intents.messages = True
         intents.message_content = True
         intents.dm_messages = True
-        self.bot = Bot("!", intents=intents)
+        self.bot = Bot("!", description="A bot that periodically checks if a url is up.", intents=intents)
 
         self.tasks: dict[str, Task] = {}
         self.req_timeout_sec: int = 5
@@ -42,11 +43,23 @@ class IsItBackYet:
             self.logger.exception(e)
 
 
-    def _check_url(self, url):
+    def _single_check_url(self, url: str) -> int:
+        '''Single `GET` request to the provided `url` that returns the `status code`.
+        If the request times out, `0` will be returned.
+        '''
+        
+        try:
+            r = requests.get(url=url, headers=self.headers, timeout=self.req_timeout_sec)
+        except requests.exceptions.Timeout:
+            return 0
+        return r.status_code
 
-        r = requests.get(url=url, headers=self.headers, timeout=self.req_timeout_sec)
-        #print(f'{url}: {r.status_code}')
-        if 199 < r.status_code < 300:
+
+    def _check_url(self, url: str) -> None:
+        '''Check a `url` with a `GET` request and update the related task's `is_back` property.'''
+
+        status_code = self._single_check_url(url)
+        if 199 < status_code < 300:
             self.tasks[url].is_back = True
     
     
@@ -57,11 +70,11 @@ class IsItBackYet:
             await user.send(message)
         
 
-    def _validate_threads(self, threads):
-        '''Ensure all threads have finished before continuing'''
-
-        threads_alive: int = len(threads)
+    def _validate_threads(self, threads: list[threading.Thread]) -> None:
+        '''Stopping block to ensure all threads have finished before continuing'''
+ 
         while True:
+            threads_alive: int = len(threads)
             for thread in threads:
                 if not thread.is_alive():
                     threads_alive -= 1
@@ -69,7 +82,9 @@ class IsItBackYet:
                 break
 
 
-    def run_bot(self):
+    def run_bot(self) -> None:
+        '''Command and task loop setup, as well as running the bot.'''
+
         def exception_handler_async(func):
             @wraps(func)
             async def wrapper(*args, **kwargs):
@@ -82,7 +97,8 @@ class IsItBackYet:
 
         @tasks.loop(seconds=self.loop_timeout_sec)
         @exception_handler_async
-        async def _main_loop():
+        async def _main_loop() -> None:
+            '''Periodically checks the `urls` and messages users as necessary.'''
 
             if not self.tasks:
                 return
@@ -110,33 +126,46 @@ class IsItBackYet:
             
             print(self.tasks)
             
-
         @self.bot.command()
         @exception_handler_async
         async def check(ctx: Context, url: str):
+            '''Command to register a `url` for periodic checking and message users as necessary.'''
             
-            max_users = False
+            try:
+                await ctx.message.delete()
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+                pass
+            if ctx.author.bot:
+                return
+
+            if not validate_url(url):
+                await ctx.author.send("Error: Invalid url provided.")
+                return
+            
+            status_code = self._single_check_url(url)
+            if 199 < status_code < 300:
+                await ctx.author.send("Url appears to be up, please check your internet connection.")
+                return
+            
+            added_success: bool = True
             if not url in self.tasks.keys():
                 task = Task(url)
                 task.users.append(ctx.author)
                 self.tasks[url] = task
             else:
-                max_users = self.tasks[url].add_user(ctx.author)
-            
-            try:
-                await ctx.message.delete()
-            except discord.Forbidden:  # Can't delete DMs
-                pass
-
-            if max_users:
-                await ctx.author.send("Error:ser already in task or max number of users reached.")
+                added_success = self.tasks[url].add_user(ctx.author)
+        
+            if not added_success:
+                await ctx.author.send("Error: Duplicate request or max number of users reached.")
                 return
+
             await ctx.author.send(f'You will be DMed when {url} is up! This task will expire in {self.tasks[url].time_until_expiration_hours} hours.')
 
 
         @self.bot.command()
         @exception_handler_async
-        async def close(ctx: Context):
+        async def close(ctx: Context) -> None:
+            '''Command to close the bot connection if sent by the bot `owner`.'''
 
             if ctx.author.id == self.owner_id:
                 await self.bot.close()
@@ -146,7 +175,7 @@ class IsItBackYet:
 
         @self.bot.event
         @exception_handler_async
-        async def on_ready():
+        async def on_ready() -> None:
 
             self.logger.info(f'Logged in as {self.bot.user} (ID: {self.bot.user.id})')
             await _main_loop.start()

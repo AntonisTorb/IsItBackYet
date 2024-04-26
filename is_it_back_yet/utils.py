@@ -1,5 +1,6 @@
 import datetime
 from pathlib import Path
+import re
 
 
 def maintain_log(log_path: Path|str, days: int) -> None:
@@ -39,6 +40,25 @@ def maintain_log(log_path: Path|str, days: int) -> None:
 
     with open(log_path, "w") as f:
         f.write(new_log)
+
+
+def validate_url(url: str) -> bool:
+    '''Validates a url based on the `django url validation regex`
+    (https://github.com/django/django/blob/stable/1.3.x/django/core/validators.py#L45)
+    '''
+
+    validator = re.compile(
+        r'^(?:http|ftp)s?://' # http:// or https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' #domain...
+        r'localhost|' #localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
+        r'(?::\d+)?' # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+
+    return re.match(validator, url) is not None
+
+# hint for backup db, get users with the following by just storing id:
+# user: discord.User =  await self.bot.fetch_user(ctx.author.id)
 
 DISCORD_HELP = '''# Help:
 `!check`                           : Returns the status of each Detector and Recorder component.

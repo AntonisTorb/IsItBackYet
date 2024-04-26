@@ -16,15 +16,20 @@ class Task:
         self.expiration_time_sec: float = time.perf_counter() + self.time_until_expiration_hours * 60 * 60
         self.logger = logging.getLogger(__name__)
 
+
     def __repr__(self) -> str:
         return f'{self.__dict__}'
     
+
     def add_user(self, user: Union[discord.User, discord.Member]) -> bool:
-        '''Adds a user in the current task and returns `False`. If the max users have been reached, returns True.'''
+        '''Adds a user in the current task and returns `True`.
+        If the max users have been reached or the request was duplicate, returns `False`.
+        '''
+
         if len(self.users) >= self.max_users:
-            return True
+            return False
         elif user in self.users:
-            return True
+            return False
         else:
             self.users.append(user)
-            return False
+            return True
