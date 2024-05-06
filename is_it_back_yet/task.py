@@ -4,32 +4,38 @@ from typing import Union
 
 import discord
 
+from .configuration import Config
+
 
 class Task:
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, config: Config, url: str) -> None:
+        '''Represents a url task for the bot and contains the user list.'''
+
+        self.config: Config = config
         self.url: str = url
+
         self.users: list[Union[discord.User, discord.Member]] = []
-        self.max_users: int = 1000
         self.is_back: bool = False
-        self.time_until_expiration_hours: int = 1 
-        self.expiration_time_sec: float = time.perf_counter() + self.time_until_expiration_hours * 60 * 60
-        self.logger = logging.getLogger(__name__)
+        self.expiration_time_sec: float = time.perf_counter() + self.config.time_until_expiration_hours * 60 * 60
+        self.logger: logging.Logger = logging.getLogger(__name__)
 
 
     def __repr__(self) -> str:
         return f'{self.__dict__}'
     
 
-    def add_user(self, user: Union[discord.User, discord.Member]) -> bool:
-        '''Adds a user in the current task and returns `True`.
-        If the max users have been reached or the request was duplicate, returns `False`.
+    def add_user(self, user: Union[discord.User, discord.Member]) -> str:
+        '''Adds a user in the current task and returns the success message.
+        If the max users have been reached or the request was duplicate, returns the appropriate failure message.
         '''
 
-        if len(self.users) >= self.max_users:
-            return False
+        if len(self.users) >= self.config.max_users:
+            return "Error: Max number of users reached for this URL. Please try again later."
         elif user in self.users:
-            return False
+            return "Error: Duplicate request. Please don't spam or you could be blocked."
         else:
             self.users.append(user)
-            return True
+            self.expiration_time_sec = time.perf_counter() + self.config.time_until_expiration_hours * 60 * 60
+            return f'''### You will be DMed when {self.url} is up!
+*This task will expire in {self.config.time_until_expiration_hours} hours unless another user requests it.*'''

@@ -1,0 +1,6 @@
+{
+    "req_timeout_sec": 5,
+    "loop_timeout_sec": 10,
+    "max_users": 1000,
+    "time_until_expiration_hours": 1
+}

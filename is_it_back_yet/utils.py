@@ -60,14 +60,15 @@ def validate_url(url: str) -> bool:
 # hint for backup db, get users with the following by just storing id:
 # user: discord.User =  await self.bot.fetch_user(ctx.author.id)
 
-DISCORD_HELP = '''# Help:
-`!check`                           : Returns the status of each Detector and Recorder component.
-`!close`                            : Close application.
-`!detect`                           : Start detecting with all cameras.
-`!stopdetecting`                    : Stop detecting with all cameras.
-`!stoprecording`                    : Stop recording and start detecting with all cameras.
-`!setdetectorthreshold camera value`: Set a new detector threshold value for the specified camera.
-`!setalertthreshold camera value`   : Set a new alert threshold value for the specified camera.
-`!checklog lines`                   : Returns lines from the end of the `log file`. Replace `lines` with the amount of lines you need.
-`!clear`                            : Deletes all messages in the `status-control` Discord channel.
+DISCORD_HELP_USERS = '''# Help:
+`!check url    `: Add the `url` in a task to check for availability and message you once it's back.
+'''
+
+DISCORD_HELP_OWNER = '''# Help:
+`!check url                  `: Add the `url` in a task to check for availability and message you once it's back.
+`!close                      `: Close application.
+`!setexpirationhours hours   `: Set the task expiration time in hours.
+`!setlooptimeout sec         `: Set how often the checking loop runs in seconds.
+`!setmaxusers amount         `: Set the maximum amount of users for all tasks.
+`!setreqtimeout sec          `: Set the GET request timeout in seconds.
 '''

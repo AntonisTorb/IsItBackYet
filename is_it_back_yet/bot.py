@@ -7,33 +7,33 @@ import threading
 import discord
 from discord.ext import tasks
 from discord.ext.commands import Bot, Context
+from discord.ext.commands.errors import MissingRequiredArgument, BadArgument
 from dotenv import load_dotenv
 import requests
 
+from .configuration import Config
 from .task import Task
-from .utils import validate_url
+from .utils import validate_url, DISCORD_HELP_OWNER, DISCORD_HELP_USERS
 
 
 class IsItBackYet:
 
-    def __init__(self) -> None:
+    def __init__(self, config: Config) -> None:
         '''Discord bot that keeps track of tasks, checks the task URLs and messages task users appropriatelly.'''
 
-        self.headers = {
+        self.config: Config = config
+        self.headers: dict[str, str] = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0"
         }
 
-        intents = discord.Intents.default()
+        intents: discord.Intents = discord.Intents.default()
         intents.messages = True
         intents.message_content = True
         intents.dm_messages = True
-        self.bot = Bot("!", description="A bot that periodically checks if a url is up.", intents=intents)
+        self.bot: Bot = Bot("!", description="A bot that periodically checks if a url is up.", help_command=None, intents=intents)
 
         self.tasks: dict[str, Task] = {}
-        self.req_timeout_sec: int = 5
-        self.loop_timeout_sec: int = 10
-
-        self.logger = logging.getLogger(__name__)
+        self.logger: logging.Logger = logging.getLogger(__name__)
 
         try:
             load_dotenv()
@@ -49,7 +49,7 @@ class IsItBackYet:
         '''
         
         try:
-            r = requests.get(url=url, headers=self.headers, timeout=self.req_timeout_sec)
+            r = requests.get(url=url, headers=self.headers, timeout=self.config.req_timeout_sec)
         except requests.exceptions.Timeout:
             return 0
         return r.status_code
@@ -95,7 +95,7 @@ class IsItBackYet:
             return wrapper
 
 
-        @tasks.loop(seconds=self.loop_timeout_sec)
+        @tasks.loop(seconds=self.config.loop_timeout_sec)
         @exception_handler_async
         async def _main_loop() -> None:
             '''Periodically checks the `urls` and messages users as necessary.'''
@@ -147,31 +147,77 @@ class IsItBackYet:
                 await ctx.author.send("Url appears to be up, please check your internet connection.")
                 return
             
-            added_success: bool = True
             if not url in self.tasks.keys():
-                task = Task(url)
-                task.users.append(ctx.author)
+                task = Task(self.config, url)
                 self.tasks[url] = task
-            else:
-                added_success = self.tasks[url].add_user(ctx.author)
-        
-            if not added_success:
-                await ctx.author.send("Error: Duplicate request or max number of users reached.")
-                return
 
-            await ctx.author.send(f'You will be DMed when {url} is up! This task will expire in {self.tasks[url].time_until_expiration_hours} hours.')
+            message = self.tasks[url].add_user(ctx.author)
+            await ctx.author.send(message)
+
+        
+        @self.bot.command()
+        @exception_handler_async
+        async def setreqtimeout(ctx: Context, req_timeout_sec: int) -> None:
+
+            if ctx.author.id != self.owner_id:
+                await ctx.author.send("Error: Unauthorized user, cannot execute command.")
+                return
+            self.config.req_timeout_sec = req_timeout_sec
+            ctx.author.send(f'Config updated: {req_timeout_sec = }')
+
+
+        @self.bot.command()
+        @exception_handler_async
+        async def setlooptimeout(ctx: Context, loop_timeout_sec: int) -> None:
+
+            if ctx.author.id != self.owner_id:
+                await ctx.author.send("Error: Unauthorized user, cannot execute command.")
+                return
+            self.config.loop_timeout_sec = loop_timeout_sec
+            await ctx.author.send(f'Config updated: {loop_timeout_sec = }')
+
+
+        @self.bot.command()
+        @exception_handler_async
+        async def setmaxusers(ctx: Context, max_users: int) -> None:
+
+            if ctx.author.id != self.owner_id:
+                await ctx.author.send("Error: Unauthorized user, cannot execute command.")
+                return
+            self.config.max_users = max_users
+            await ctx.author.send(f'Config updated: {max_users = }')
+
+
+        @self.bot.command()
+        @exception_handler_async
+        async def setexpirationhours(ctx: Context, time_until_expiration_hours: int) -> None:
+
+            if ctx.author.id != self.owner_id:
+                await ctx.author.send("Error: Unauthorized user, cannot execute command.")
+                return
+            self.config.time_until_expiration_hours = time_until_expiration_hours
+            await ctx.author.send(f'Config updated: {time_until_expiration_hours = }')
+
+
+        @self.bot.command()
+        @exception_handler_async
+        async def help(ctx: Context) -> None:
+
+            if ctx.author.id != self.owner_id:
+                await ctx.author.send(DISCORD_HELP_USERS)
+                return
+            await ctx.author.send(DISCORD_HELP_OWNER)
 
 
         @self.bot.command()
         @exception_handler_async
         async def close(ctx: Context) -> None:
-            '''Command to close the bot connection if sent by the bot `owner`.'''
 
-            if ctx.author.id == self.owner_id:
-                await self.bot.close()
-            else:
-                await ctx.author.send("Unauthorized user, cannot close bot.")
-
+            if ctx.author.id != self.owner_id:
+                await ctx.author.send("Error: Unauthorized user, cannot execute command.")
+                return
+            await self.bot.close()
+      
 
         @self.bot.event
         @exception_handler_async
